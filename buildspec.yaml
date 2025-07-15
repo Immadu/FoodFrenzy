@@ -31,15 +31,17 @@ phases:
       - set -o pipefail
       - mvn -B clean package -DskipTests | tee build.log
       - echo "Building Docker image"
+      - if [ ! -f Dockerfile ]; then echo "ERROR: Dockerfile not found"; exit 1; fi
       - docker build -t $IMAGE_TAG .
+      - echo "Tagging Docker image"
       - docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+      - echo "Pushing Docker image"
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
 
   post_build:
     commands:
       - echo "Build completed on $(date)"
-      - echo "Pushed image:"
-      - echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
+      - echo "Docker image pushed: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 
 artifacts:
   files:
