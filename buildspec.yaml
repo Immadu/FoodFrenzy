@@ -19,23 +19,23 @@ phases:
 
   pre_build:
     commands:
-      - "echo Preparing build environment"
-      - "echo Source version: $CODEBUILD_RESOLVED_SOURCE_VERSION"
-
-  build:
-    commands:
-      - "echo Building Spring Boot JAR"
-      - "set -o pipefail"
-      - "mvn -X clean package -DskipTests | tee build.log"
-      - "echo Packaging complete (status: $?)"
-      - "echo Building Docker image"
-      - "export IMAGE_TAG=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION"
-      - "docker build -t $IMAGE_TAG ."
-      - "echo Tagging image as latest"
-      - "docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
-      - "echo Pushing images to ECR"
-      - "docker push $IMAGE_TAG"
-      - "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
+      - |
+        echo "Building Spring Boot JAR"
+        set -o pipefail
+        mvn -X clean package -DskipTests | tee build.log
+        MAVEN_EXIT=${PIPESTATUS[0]}
+        echo "Packaging complete (status: $MAVEN_EXIT)"
+        if [ $MAVEN_EXIT -ne 0 ]; then
+          echo "Maven build failed, see build.log for details"
+          exit $MAVEN_EXIT
+        fi
+      - |
+        echo "Building and pushing Docker image"
+        IMAGE_TAG=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION
+        docker build -t "$IMAGE_TAG" .
+        docker tag "$IMAGE_TAG" "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
+        docker push "$IMAGE_TAG"
+        docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 
   post_build:
     commands:
