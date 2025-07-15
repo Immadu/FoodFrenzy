@@ -5,44 +5,60 @@ env:
     AWS_REGION: "us-east-1"
     IMAGE_REPO_NAME: "awspringbootdeployment-app"
     AWS_ACCOUNT_ID: "586928288932"
+    IMAGE_TAG: "springbootecs"
 
 phases:
   install:
     runtime-versions:
       java: corretto11
     commands:
-      - "echo Installing prerequisites"
-      - "aws --version"
-      - "docker --version"
-      - "echo Logging into ECR"
-      - "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+      
+echo "Checking AWS CLI and Docker versions"
+aws --version
+docker --version
+echo "Logging into ECR",
+aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com,
+,
+,
+,
 
   pre_build:
     commands:
-      - "echo Preparing build environment"
-      - "echo Source version: $CODEBUILD_RESOLVED_SOURCE_VERSION"
+      
+echo "Preparing build environment"
+echo "Checking if image already exists"
+if docker images | grep -q $IMAGE_TAG; then echo "Image exists, removing..."; docker rmi -f $IMAGE_TAG; else echo "No existing image"; fi
+docker image prune -f,
+,
+,
+,
 
   build:
     commands:
-      - "echo Building Spring Boot JAR..."
-      - "set -o pipefail"
-      - "mvn -X clean package -DskipTests | tee build.log"
-      - "MAVEN_EXIT=${PIPESTATUS[0]}"
-      - "if [ $MAVEN_EXIT -ne 0 ]; then echo 'Maven build failed (code: '$MAVEN_EXIT')'; exit $MAVEN_EXIT; fi"
-      - "echo Building Docker image..."
-      - "IMAGE_TAG=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION"
-      - "docker build -t $IMAGE_TAG ."
-      - "docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
-      - "docker push $IMAGE_TAG"
-      - "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
+      
+echo "Building Spring Boot JAR"
+set -o pipefail
+mvn -X clean package -DskipTests | tee build.log
+echo "Building Docker image",
+docker build -t $IMAGE_TAG .,
+docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest,
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest,
+,
+,
+,
 
-  post_build:
-    commands:
-      - "echo Build completed on $(date)"
-      - "echo Pushed image tags: $IMAGE_TAG and $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
+post_build:
+  commands:
+    
+echo "Build completed on $(date)"
+echo "Pushed image:"
+echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest",
+,
+,
 
 artifacts:
   files:
-    - "target/*.jar"
-    - "build.log"
-  discard-paths: yes
+    
+target/*.jar
+build.log,
+discard-paths: yes
