@@ -2,63 +2,54 @@ version: 0.2
 
 env:
   variables:
-    AWS_REGION: "us-east-1"
-    IMAGE_REPO_NAME: "awspringbootdeployment-app"
+    AWS_REGION: us-east-1
+    IMAGE_REPO_NAME: awspringbootdeployment-app
     AWS_ACCOUNT_ID: "586928288932"
-    IMAGE_TAG: "springbootecs"
+    IMAGE_TAG: springbootecs
 
 phases:
   install:
     runtime-versions:
       java: corretto11
     commands:
-      
-echo "Checking AWS CLI and Docker versions"
-aws --version
-docker --version
-echo "Logging into ECR",
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com,
-,
-,
-,
+      - echo "Checking AWS CLI and Docker versions"
+      - aws --version
+      - docker --version
+      - echo "Logging into ECR"
+      - aws ecr get-login-password --region $AWS_REGION \
+        | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
   pre_build:
     commands:
-      
-echo "Preparing build environment"
-echo "Checking if image already exists"
-if docker images | grep -q $IMAGE_TAG; then echo "Image exists, removing..."; docker rmi -f $IMAGE_TAG; else echo "No existing image"; fi
-docker image prune -f,
-,
-,
-,
+      - echo "Preparing build environment"
+      - echo "Checking if image already exists"
+      - |
+        if docker images | grep -q $IMAGE_TAG; then
+          echo "Image exists, removing..."
+          docker rmi -f $IMAGE_TAG
+        else
+          echo "No existing image"
+        fi
+      - docker image prune -f
 
   build:
     commands:
-      
-echo "Building Spring Boot JAR"
-set -o pipefail
-mvn -X clean package -DskipTests | tee build.log
-echo "Building Docker image",
-docker build -t $IMAGE_TAG .,
-docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest,
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest,
-,
-,
-,
+      - echo "Building Spring Boot JAR"
+      - set -o pipefail
+      - mvn -X clean package -DskipTests | tee build.log
+      - echo "Building Docker image"
+      - docker build -t $IMAGE_TAG .
+      - docker tag $IMAGE_TAG "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
+      - docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 
-post_build:
-  commands:
-    
-echo "Build completed on $(date)"
-echo "Pushed image:"
-echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest",
-,
-,
+  post_build:
+    commands:
+      - echo "Build completed on $(date)"
+      - echo "Pushed image:"
+      - echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 
 artifacts:
   files:
-    
-target/*.jar
-build.log,
-discard-paths: yes
+    - target/*.jar
+    - build.log
+  discard-paths: yes
