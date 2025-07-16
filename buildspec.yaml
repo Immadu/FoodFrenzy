@@ -2,40 +2,47 @@ version: 0.2
 
 env:
   variables:
-    AWS_REGION: us-east-1
-    IMAGE_REPO_NAME: awspringbootdeployment-app
+    AWS_REGION: "us-east-1"
+    IMAGE_REPO_NAME: "awspringbootdeployment-app"
     AWS_ACCOUNT_ID: "586928288932"
-    IMAGE_TAG: springbootecs
+    IMAGE_TAG: "springbootecs"
 
 phases:
-  # … your install & pre_build …
+  install:
+    runtime-versions:
+      java: corretto11
+    commands:
+      - echo "Checking AWS CLI and Docker versions"
+      - aws --version
+      - docker --version
+      - echo "Logging into ECR"
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+  pre_build:
+    commands:
+      - echo "Preparing build environment"
+      - echo "Checking if image already exists"
+      - if docker images | grep -q $IMAGE_TAG; then echo "Image exists, removing..."; docker rmi -f $IMAGE_TAG; else echo "No existing image"; fi
+      - docker image prune -f
 
   build:
     commands:
       - echo "Building Spring Boot JAR"
-      - mvn -B clean package -DskipTests | tee build.log
-
-      # derive a unique tag from the commit SHA
-      - export SHA_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}
-      - echo "Using SHA tag: $SHA_TAG"
-
-      # build, then tag both “latest” and the SHA
+      - set -o pipefail
+      - mvn -X clean package -DskipTests | tee build.log
+      - echo "Building Docker image"
       - docker build -t $IMAGE_TAG .
       - docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
-      - docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$SHA_TAG
-
-      # push both
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$SHA_TAG
 
-      # generate imagedefinitions.json for the ECS deploy action
-      - printf '[{"name":"springboot","imageUri":"%s.dkr.ecr.%s.amazonaws.com/%s:%s"}]' \
-          "$AWS_ACCOUNT_ID" "$AWS_REGION" "$IMAGE_REPO_NAME" "$SHA_TAG" \
-        > imagedefinitions.json
+post_build:
+  commands:
+    - echo "Build completed on $(date)"
+    - echo "Pushed image:"
+    - echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 
 artifacts:
   files:
-    - imagedefinitions.json
     - target/*.jar
     - build.log
   discard-paths: yes
