@@ -2,40 +2,188 @@ version: 0.2
 
 env:
   variables:
-    AWS_REGION: us-east-1
-    IMAGE_REPO_NAME: awspringbootdeployment-app
+    AWS_REGION: "us-east-1"
+    IMAGE_REPO_NAME: "awspringbootdeployment-app"
     AWS_ACCOUNT_ID: "586928288932"
-    IMAGE_TAG: springbootecs
+    IMAGE_TAG: "springbootecs"
 
 phases:
-  # … your install & pre_build …
+  install:
+    runtime-versions:
+      java: corretto11
+    commands:
+      - echo "Checking AWS CLI and Docker versions"
+      - aws --version
+      - docker --version
+      - echo "Logging into ECR"
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+  pre_build:
+    commands:
+      - echo "Preparing build environment"
+      - echo "Checking if image already exists"
+      - if docker images | grep -q $IMAGE_TAG; then echo "Image exists, removing..."; docker rmi -f $IMAGE_TAG; else echo "No existing image"; fi
+      - docker image prune -f
 
   build:
     commands:
       - echo "Building Spring Boot JAR"
-      - mvn -B clean package -DskipTests | tee build.log
-
-      # derive a unique tag from the commit SHA
-      - export SHA_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}
-      - echo "Using SHA tag: $SHA_TAG"
-
-      # build, then tag both “latest” and the SHA
+      - set -o pipefail
+      - mvn -X clean package -DskipTests | tee build.log
+      - echo "Building Docker image"
       - docker build -t $IMAGE_TAG .
       - docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
-      - docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$SHA_TAG
-
-      # push both
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$SHA_TAG
 
-      # generate imagedefinitions.json for the ECS deploy action
-      - printf '[{"name":"springboot","imageUri":"%s.dkr.ecr.%s.amazonaws.com/%s:%s"}]' \
-          "$AWS_ACCOUNT_ID" "$AWS_REGION" "$IMAGE_REPO_NAME" "$SHA_TAG" \
-        > imagedefinitions.json
+post_build:
+  commands:
+    - echo "Build completed on $(date)"
+    - echo "Pushed image:"
+    - echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 
 artifacts:
   files:
-    - imagedefinitions.json
     - target/*.jar
     - build.log
   discard-paths: yes
+
+
+
+
+
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.1.3</version>
+    <relativePath/> <!-- lookup parent from repository -->
+  </parent>
+
+  <groupId>com.org</groupId>
+  <artifactId>FoodFrenzy</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>FoodFrenzy</name>
+  <description>FoodFrenzy using Spring Boot and Thymeleaf</description>
+
+  <properties>
+    <java.version>17</java.version>
+  </properties>
+
+  <dependencies>
+    <!-- Web and UI -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-thymeleaf</artifactId>
+    </dependency>
+
+    <!-- Validation -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!-- JPA and MySQL -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Security -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+
+    <!-- Devtools (Development Only) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-devtools</artifactId>
+      <scope>runtime</scope>
+      <optional>true</optional>
+    </dependency>
+
+    <!-- Testing -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <resources>
+      <!-- Filter text-based resources -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>**/*.properties</include>
+          <include>**/*.yml</include>
+        </includes>
+      </resource>
+
+      <!-- Exclude filtering for binary files -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>**/*.properties</exclude>
+          <exclude>**/*.yml</exclude>
+        </excludes>
+      </resource>
+    </resources>
+
+    <plugins>
+      <!-- Enforce Java version -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.10.1</version>
+        <configuration>
+          <source>${java.version}</source>
+          <target>${java.version}</target>
+        </configuration>
+      </plugin>
+
+      <!-- Spring Boot repackage plugin -->
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
+
+
+
+
