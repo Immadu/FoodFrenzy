@@ -46,4 +46,3 @@ artifacts:
     - target/*.jar
     - build.log
   discard-paths: yes
-
