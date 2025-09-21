@@ -1,21 +1,68 @@
 version: 0.2
+
+env:
+  variables:
+    AWS_REGION: "us-east-1"
+    AWS_ACCOUNT_ID: "586928288932"
+    IMAGE_REPO_NAME: "awspringbootdeployment-app"
+    # MUST match containerDefinitions[].name in your ECS task definition (case-sensitive)
+    CONTAINER_NAME: "springboot-ecs-new"
+
 phases:
+  install:
+    runtime-versions:
+      java: corretto11
+    commands:
+      - "set -euo pipefail"
+      - "echo AWS/CLI versions:"
+      - "aws --version && docker --version"
+      - "echo Logging in to ECR"
+      - "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+  pre_build:
+    commands:
+      - "export REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
+      - 'export IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}'
+      - 'echo REPOSITORY_URI=${REPOSITORY_URI}  IMAGE_TAG=${IMAGE_TAG}'
+      - "docker image prune -f || true"
+
   build:
     commands:
-      - set -euo pipefail
-      - echo "Creating imagedefinitions.json (static)…"
-      - cat > imagedefinitions.json <<'JSON'
-[
-  {"name":"springboot-ecs-new","imageUri":"586928288932.dkr.ecr.us-east-1.amazonaws.com/awspringbootdeployment-app:latest"}
-]
-JSON
-      - echo "Validating JSON with Python…"
-      - python3 - <<'PY'
+      - "echo Building Spring Boot JAR"
+      - "mvn -q clean package -DskipTests"
+      - "echo Building Docker image ${REPOSITORY_URI}:${IMAGE_TAG}"
+      - "docker build -t ${REPOSITORY_URI}:${IMAGE_TAG} ."
+      - "echo Tagging also as :latest"
+      - "docker tag ${REPOSITORY_URI}:${IMAGE_TAG} ${REPOSITORY_URI}:latest"
+      - "echo Pushing images (:${IMAGE_TAG} and :latest)"
+      - "docker push ${REPOSITORY_URI}:${IMAGE_TAG}"
+      - "docker push ${REPOSITORY_URI}:latest"
+
+  post_build:
+    commands:
+      - "echo Creating imagedefinitions.json for ECS deploy"
+      - 'python3 - <<PY
+import os, json, io
+name = os.environ["CONTAINER_NAME"]
+repo = os.environ["REPOSITORY_URI"]
+tag  = os.environ.get("IMAGE_TAG","latest")
+data = [{"name": name, "imageUri": f"{repo}:{tag}"}]
+with io.open("imagedefinitions.json","w",encoding="utf-8") as f:
+    json.dump(data, f, separators=(",",":"))
+print("Wrote imagedefinitions.json")
+PY'
+      - "echo Validating JSON"
+      - 'python3 - <<PY
 import json, io
 json.load(io.open("imagedefinitions.json","r",encoding="utf-8"))
 print("JSON is valid")
-PY
-      - echo "Workspace listing:" && pwd && ls -la && echo "-----"; cat imagedefinitions.json
+PY'
+      - "echo Workspace listing (should show imagedefinitions.json at root):"
+      - "pwd && ls -la"
+      - "echo File contents:"
+      - "cat imagedefinitions.json"
+      - 'test -f imagedefinitions.json || (echo "ERROR: imagedefinitions.json missing" && exit 1)'
+
 artifacts:
   files:
     - imagedefinitions.json
