@@ -38,6 +38,4 @@ post_build:
 artifacts:
   files:
     - imagedefinitions.json
-    - target/*.jar
-    - build.log
   discard-paths: yes
