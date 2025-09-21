@@ -12,38 +12,41 @@ phases:
     runtime-versions:
       java: corretto11
     commands:
-      - set -euo pipefail
-      - echo "AWS/Docker versions"
-      - aws --version
-      - docker --version
-      - echo "Login to ECR"
-      - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+      - "set -euo pipefail"
+      - "echo Checking AWS CLI and Docker versions"
+      - "aws --version"
+      - "docker --version"
+      - "echo Logging into ECR"
+      - "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
   pre_build:
     commands:
-      - export REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}
-      - export IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}
-      - echo "Repo: ${REPOSITORY_URI} | Tag: ${IMAGE_TAG}"
-      - docker image prune -f || true
+      - "echo Preparing build environment"
+      - "export REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
+      - 'if [ -n "${CODEBUILD_RESOLVED_SOURCE_VERSION:-}" ]; then export IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION}; else export IMAGE_TAG=latest; fi'
+      - 'echo Repo=${REPOSITORY_URI} Tag=${IMAGE_TAG}'
+      - "docker image prune -f || true"
 
   build:
     commands:
-      - echo "Build Spring Boot JAR"
-      - mvn -q -DskipTests clean package
-      - echo "Build & push image"
-      - docker build -t ${REPOSITORY_URI}:${IMAGE_TAG} .
-      - docker tag ${REPOSITORY_URI}:${IMAGE_TAG} ${REPOSITORY_URI}:latest
-      - docker push ${REPOSITORY_URI}:${IMAGE_TAG}
-      - docker push ${REPOSITORY_URI}:latest
+      - "echo Building Spring Boot JAR"
+      - "mvn -q -DskipTests clean package"
+      - "echo Building Docker image ${REPOSITORY_URI}:${IMAGE_TAG}"
+      - "docker build -t ${REPOSITORY_URI}:${IMAGE_TAG} ."
+      - "echo Tagging also as :latest"
+      - "docker tag ${REPOSITORY_URI}:${IMAGE_TAG} ${REPOSITORY_URI}:latest"
+      - "echo Pushing image tags (:${IMAGE_TAG} and :latest)"
+      - "docker push ${REPOSITORY_URI}:${IMAGE_TAG}"
+      - "docker push ${REPOSITORY_URI}:latest"
 
   post_build:
     commands:
-      - echo "Create imagedefinitions.json (using :${IMAGE_TAG})"
-      - printf '[{"name":"%s","imageUri":"%s:%s"}]\n' "${CONTAINER_NAME}" "${REPOSITORY_URI}" "${IMAGE_TAG}" > imagedefinitions.json
-      - echo "Verify file exists at working dir root:"
-      - pwd && ls -la
-      - test -f imagedefinitions.json || (echo "imagedefinitions.json missing!" && exit 1)
-      - echo "Contents:" && cat imagedefinitions.json
+      - "echo Creating imagedefinitions.json (using :${IMAGE_TAG})"
+      - 'printf "[{\\"name\\":\\"%s\\",\\"imageUri\\":\\"%s:%s\\"}]\n" "${CONTAINER_NAME}" "${REPOSITORY_URI}" "${IMAGE_TAG}" > imagedefinitions.json'
+      - "echo Listing workspace to verify artifact root"
+      - "pwd && ls -la"
+      - "echo imagedefinitions.json contents:"
+      - "cat imagedefinitions.json"
 
 artifacts:
   files:
