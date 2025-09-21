@@ -1,27 +1,21 @@
 version: 0.2
-
 phases:
   build:
     commands:
       - set -euo pipefail
-      - echo "Creating imagedefinitions.json (static, known-good)…"
-      # Write JSON with a here-doc (no shell escaping issues, LF line endings)
+      - echo "Creating imagedefinitions.json (static)…"
       - cat > imagedefinitions.json <<'JSON'
 [
   {"name":"springboot-ecs-new","imageUri":"586928288932.dkr.ecr.us-east-1.amazonaws.com/awspringbootdeployment-app:latest"}
 ]
 JSON
-      - echo "Validating JSON…"
-      # Use python (always available) to validate; jq is optional
+      - echo "Validating JSON with Python…"
       - python3 - <<'PY'
-import json,sys,io
-with io.open("imagedefinitions.json","r",encoding="utf-8") as f:
-    json.load(f)
+import json, io
+json.load(io.open("imagedefinitions.json","r",encoding="utf-8"))
 print("JSON is valid")
 PY
-      - echo "Show file:"
-      - pwd && ls -la && cat imagedefinitions.json
-
+      - echo "Workspace listing:" && pwd && ls -la && echo "-----"; cat imagedefinitions.json
 artifacts:
   files:
     - imagedefinitions.json
