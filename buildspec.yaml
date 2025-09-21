@@ -1,46 +1,43 @@
 version: 0.2
-
 env:
   variables:
     AWS_REGION: "us-east-1"
-    AWS_ACCOUNT_ID: "586928288932"
     IMAGE_REPO_NAME: "awspringbootdeployment-app"
-    CONTAINER_NAME: "springboot-ecs-new"
-
+    AWS_ACCOUNT_ID: "586928288932"
+    IMAGE_TAG: "springbootecs"
 phases:
   install:
     runtime-versions:
       java: corretto11
     commands:
-      - "set -euo pipefail"
-      - "aws --version && docker --version"
-      - "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
+      - echo "Checking AWS CLI and Docker versions"
+      - aws --version
+      - docker --version
+      - echo "Logging into ECR"
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
   pre_build:
     commands:
-      - "export REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
-      - 'export IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}'
-      - 'echo REPOSITORY_URI=${REPOSITORY_URI} IMAGE_TAG=${IMAGE_TAG}'
-      - "docker image prune -f || true"
-
+      - echo "Preparing build environment"
+      - echo "Checking if image already exists"
+      - if docker images | grep -q $IMAGE_TAG; then echo "Image exists, removing..."; docker rmi -f $IMAGE_TAG; else echo "No existing image"; fi
+      - docker image prune -f
   build:
     commands:
-      - "mvn -q -DskipTests clean package"
-      - "docker build -t ${REPOSITORY_URI}:${IMAGE_TAG} ."
-      - "docker tag ${REPOSITORY_URI}:${IMAGE_TAG} ${REPOSITORY_URI}:latest"
-      - "docker push ${REPOSITORY_URI}:${IMAGE_TAG}"
-      - "docker push ${REPOSITORY_URI}:latest"
-
-  post_build:
-    commands:
-      - 'printf "[{\\"name\\":\\"%s\\",\\"imageUri\\":\\"%s:%s\\"}]\n" "${CONTAINER_NAME}" "${REPOSITORY_URI}" "${IMAGE_TAG}" > imagedefinitions.json'
-      - "echo WORKING DIR: $(pwd)"
-      - "echo LISTING WORKSPACE (should show imagedefinitions.json here):"
-      - "ls -la"
-      - "echo FILE CONTENTS:" && cat imagedefinitions.json
-      - "test -f imagedefinitions.json || (echo 'ERROR: imagedefinitions.json missing in workspace root' && exit 1)"
-
+      - echo "Building Spring Boot JAR"
+      - set -o pipefail
+      - mvn -X clean package -DskipTests | tee build.log
+      - echo "Building Docker image"
+      - docker build -t $IMAGE_TAG .
+      - docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+post_build:
+  commands:
+    - echo "Build completed on $(date)"
+    - echo "Pushed image:"
+    - echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest"
 artifacts:
   files:
     - imagedefinitions.json
+    - target/*.jar
+    - build.log
   discard-paths: yes
